@@ -31,6 +31,7 @@ module "ec2-instance-private" {
   key_name = "coalfire-interview"
   root_block_device = [{volume_size = 20}]
   subnet_id = module.vpc.private_subnets[0]
+  vpc_security_group_ids = [module.ec2-sg.this_security_group_id]
 }
 
 module "ec2-instance-public" {
@@ -42,6 +43,7 @@ module "ec2-instance-public" {
   key_name = "coalfire-interview"
   root_block_device = [{volume_size = 20}]
   subnet_id = module.vpc.public_subnets[0]
+  vpc_security_group_ids = [module.ec2-sg.this_security_group_id]
 }
 
 module "alb" {
@@ -51,7 +53,7 @@ module "alb" {
   load_balancer_type = "application"
   vpc_id = module.vpc.vpc_id
   subnets = module.vpc.private_subnets
-  security_groups = ["sg-05706c9fcd332463c"]
+  security_groups = [module.alb-sg.this_security_group_id]
   target_groups = [
     {
       backend_protocol = "HTTP"
@@ -72,4 +74,56 @@ resource "aws_alb_target_group_attachment" "target" {
   target_group_arn = module.alb.target_group_arns[0]
   port             = 80
   target_id        = module.ec2-instance-private.id[0]
+}
+
+module "alb-sg" {
+  source = "terraform-aws-modules/security-group/aws"
+
+  name        = "coalfire-interview"
+  description = "Security group for application load balancer"
+  vpc_id      = module.vpc.vpc_id
+  ingress_with_cidr_blocks = [
+    {
+      from_port   = 80
+      to_port     = 80
+      protocol    = "tcp"
+      description = "User-service ports"
+      cidr_blocks = "0.0.0.0/0"
+    }
+  ]
+  egress_with_cidr_blocks = [
+    {
+      from_port   = 80
+      to_port     = 80
+      protocol    = "tcp"
+      description = "User-service ports"
+      cidr_blocks = "0.0.0.0/0"
+    }
+  ]
+}
+
+module "ec2-sg" {
+  source = "terraform-aws-modules/security-group/aws"
+
+  name        = "coalfire-interview"
+  description = "Security group for EC2 instance"
+  vpc_id      = module.vpc.vpc_id
+  ingress_with_source_security_group_id = [
+    {
+      from_port   = 22
+      to_port     = 80
+      protocol    = "tcp"
+      description = "User-service ports"
+      source_security_group_id = module.alb-sg.this_security_group_id
+    }
+  ]
+  egress_with_cidr_blocks = [
+    {
+      from_port   = 22
+      to_port     = 80
+      protocol    = "tcp"
+      description = "User-service ports"
+      cidr_blocks = "0.0.0.0/0"
+    }
+  ]
 }
